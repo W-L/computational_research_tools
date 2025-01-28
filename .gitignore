@@ -1,0 +1,10 @@
+.snakemake/
+.idea/
+admin/
+dump/
+rnaseq/data/
+rnaseq/results/
+rnaseq/logs/
+rnaseq/resources/
+material/
+
