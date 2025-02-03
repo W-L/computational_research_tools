@@ -4,9 +4,11 @@
 
 https://ufind.univie.ac.at/en/course.html?lv=570008&semester=2024W
 
-## Slides
+## Slides and homework submissions
 
-will be added after lectures
+moodle page: https://moodle.univie.ac.at/user/index.php?id=443256
+
+
 
 ## Sources and acknowledgements
 
