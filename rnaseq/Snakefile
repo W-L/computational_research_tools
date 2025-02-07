@@ -1,0 +1,49 @@
+
+
+link = 'https://ucloud.univie.ac.at/index.php/s/wEp8nwSy7kQ8ZHz/download/snakemake_rnaseq.tar.gz'
+
+
+conditions = ['highCO2', 'lowCO2']
+samples = ['sample1', 'sample2', 'sample3']
+mates = ['1', '2']
+
+rule all:
+    input:
+        expand('results/{condition}_{sample}_trimmed_1.fastq', condition=conditions, sample=samples)
+
+
+rule download_data:
+    output:
+        expand('data/{condition}_{sample}_{mate}.fastq', condition=conditions, sample=samples, mate=mates),
+        genome='resources/Scerevisiae.fasta',
+        annotation='resources/Scerevisiae.gtf'
+    params:
+        download_link=link
+    shell:
+        '''
+        wget {params.download_link} -O snakemake_rnaseq.tar.gz
+        tar -xvf snakemake_rnaseq.tar.gz
+        rm snakemake_rnaseq.tar.gz
+        mv snakemake_rnaseq/* .
+        rmdir snakemake_rnaseq/
+        '''
+
+
+
+rule fastq_trim:
+    input:
+       reads1 = 'data/{condition}_{sample}_1.fastq',
+       reads2 = 'data/{condition}_{sample}_2.fastq'
+    output:
+       trim1 = 'results/{condition}_{sample}_trimmed_1.fastq',
+       trim2 = 'results/{condition}_{sample}_trimmed_2.fastq'
+    log:
+       'logs/{condition}_{sample}_trim.log'
+    shell:
+        'atropos trim -q 20,20 --minimum-length 25 --trim-n --preserve-order '
+        '   --max-n 10 --no-cache-adapters -a "A{{20}}" -A "A{{20}}"  '
+        '   -pe1 {input.reads1} -pe2 {input.reads2} -o {output.trim1} -p {output.trim2} >> {log}'
+
+
+
+
