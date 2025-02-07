@@ -9,8 +9,8 @@ mates = ['1', '2']
 
 rule all:
     input:
-        expand('results/{condition}_{sample}_mapped_reads.sam', condition=conditions, sample=samples)
-
+        # expand('results/{condition}_{sample}_mapped_reads.sam', condition=conditions, sample=samples)
+        expand('results/{condition}_{sample}.bam', condition=conditions, sample=samples)
 
 rule download_data:
     output:
@@ -79,5 +79,20 @@ rule read_mapping:
         ' -p {threads} -x {input.index} -1 {input.trim1} -2 {input.trim2} '
         ' -S {output.sam} --summary-file {output.report} 2>> {log}'
 
+rule sam_to_bam:
+    input:
+        sam = rules.read_mapping.output.sam
+    output:
+        bam = 'results/{condition}_{sample}.bam',
+        bam_sorted = 'results/{condition}_{sample}_sorted.bam',
+        index = 'results/{condition}_{sample}_sorted.bam.bai',
+    log:
+        'logs/{condition}_{sample}_samtools.log'
+    shell:
+        '''
+        samtools view {input.sam} -b -o {output.bam} 2>> {log}
+        samtools sort {output.bam} -O bam -o {output.bam_sorted} 2>> {log}
+        samtools index -b {output.bam_sorted} -o {output.index} 2>> {log}
+        '''
 
 
