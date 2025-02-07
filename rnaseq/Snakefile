@@ -9,8 +9,7 @@ mates = ['1', '2']
 
 rule all:
     input:
-        # expand('results/{condition}_{sample}_mapped_reads.sam', condition=conditions, sample=samples)
-        expand('results/{condition}_{sample}.bam', condition=conditions, sample=samples)
+        expand('results/{condition}_{sample}_gene_counts.tsv', condition=conditions, sample=samples)
 
 rule download_data:
     output:
@@ -95,4 +94,20 @@ rule sam_to_bam:
         samtools index -b {output.bam_sorted} -o {output.index} 2>> {log}
         '''
 
+
+rule gene_counts:
+    input:
+        bam_sorted = rules.sam_to_bam.output.bam_sorted,
+        annotation = 'resources/Scerevisiae.gtf'
+    output:
+        gene_counts = 'results/{condition}_{sample}_gene_counts.tsv',
+        gene_summary = 'results/{condition}_{sample}_gene_counts.summary',
+    log:
+        'logs/{condition}_{sample}_featurecounts.log'
+    shell:
+        'featureCounts -t exon -g gene_id '
+        '  -s 2 -p -B -C --largestOverlap '
+        '   --verbose -F GTF '
+        '   -a {input.annotation} -o {output.gene_counts} {input.bam_sorted} &>> {log} && '
+        'mv {output.gene_counts}.summary {output.gene_summary} '
 
