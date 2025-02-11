@@ -1,0 +1,152 @@
+
+
+link = 'https://ucloud.univie.ac.at/index.php/s/wEp8nwSy7kQ8ZHz/download/snakemake_rnaseq.tar.gz'
+
+
+conditions = ['highCO2', 'lowCO2']
+samples = ['sample1', 'sample2', 'sample3']
+mates = ['1', '2']
+#
+
+rule all:
+    input:
+        expand('results/{condition}_{sample}_gene_counts.tsv', condition=conditions, sample=samples),
+        'top_genes.png'
+
+
+rule download_data:
+    output:
+        expand('data/{condition}_{sample}_{mate}.fastq', condition=conditions, sample=samples, mate=mates),
+        genome='resources/Scerevisiae.fasta',
+        annotation='resources/Scerevisiae.gtf'
+    params:
+        download_link=link
+    localrule:
+        True
+    shell:
+        '''
+        wget {params.download_link} -O snakemake_rnaseq.tar.gz
+        tar -xvf snakemake_rnaseq.tar.gz
+        rm snakemake_rnaseq.tar.gz
+        mv snakemake_rnaseq/* .
+        rmdir snakemake_rnaseq/
+        '''
+
+
+
+rule fastq_trim:
+    input:
+       reads1 = 'data/{condition}_{sample}_1.fastq',
+       reads2 = 'data/{condition}_{sample}_2.fastq'
+    output:
+       trim1 = 'results/{condition}_{sample}_trimmed_1.fastq',
+       trim2 = 'results/{condition}_{sample}_trimmed_2.fastq'
+    log:
+       'logs/{condition}_{sample}_trim.log'
+    benchmark:
+        'benchmarks/{condition}_{sample}_trim.bm'
+    shell:
+        'atropos trim -q 20,20 --minimum-length 25 --trim-n --preserve-order '
+        '   --max-n 10 --no-cache-adapters -a "A{{20}}" -A "A{{20}}"  '
+        '   -pe1 {input.reads1} -pe2 {input.reads2} -o {output.trim1} -p {output.trim2} >> {log}'
+
+
+
+rule hisat_index:
+    input:
+        genome="resources/Scerevisiae.fasta"
+    output:
+        genome_index="resources/genome_indices/Scerevisiae_index"
+    localrule:
+        True
+    shell:
+        """
+        hisat2-build -p 24 -f {input} {output}
+        if [ ! -e "{output}.1.ht2" ]
+        then 
+            exit 1
+        fi
+        touch {output}
+        """
+
+
+rule read_mapping:
+    input:
+        trim1 = rules.fastq_trim.output.trim1,
+        trim2 = rules.fastq_trim.output.trim2,
+        index = rules.hisat_index.output.genome_index
+    output:
+        sam = 'results/{condition}_{sample}_mapped_reads.sam',
+        report = 'results/{condition}_{sample}_mapping_report.txt'
+    log:
+        'logs/{condition}_{sample}_mapping.log'
+    benchmark:
+        'benchmarks/{condition}_{sample}_mapping.bm'
+    threads:
+        6
+    resources:
+        mem_mb=1000
+    shell:
+        'hisat2 --dta --fr --no-mixed --no-discordant '
+        ' --time --new-summary --no-unal '
+        ' -p {threads} -x {input.index} -1 {input.trim1} -2 {input.trim2} '
+        ' -S {output.sam} --summary-file {output.report} 2>> {log}'
+
+
+rule sam_to_bam:
+    input:
+        sam = rules.read_mapping.output.sam
+    output:
+        bam = 'results/{condition}_{sample}.bam',
+        bam_sorted = 'results/{condition}_{sample}_sorted.bam',
+        index = 'results/{condition}_{sample}_sorted.bam.bai',
+    log:
+        'logs/{condition}_{sample}_samtools.log'
+    benchmark:
+        'benchmarks/{condition}_{sample}_samtools.bm'
+    resources:
+        mem_mb=2000
+    shell:
+        '''
+        samtools view {input.sam} -b -o {output.bam} 2>> {log}
+        samtools sort {output.bam} -O bam -o {output.bam_sorted} 2>> {log}
+        samtools index -b {output.bam_sorted} -o {output.index} 2>> {log}
+        '''
+
+
+rule gene_counts:
+    input:
+        bam_sorted = rules.sam_to_bam.output.bam_sorted,
+        annotation = 'resources/Scerevisiae.gtf'
+    output:
+        gene_counts = 'results/{condition}_{sample}_gene_counts.tsv',
+        gene_summary = 'results/{condition}_{sample}_gene_counts.summary',
+    log:
+        'logs/{condition}_{sample}_featurecounts.log'
+    benchmark:
+        'benchmarks/{condition}_{sample}_featurecounts.bm'
+    resources:
+        mem_mb=2000
+    shell:
+        'featureCounts -t exon -g gene_id '
+        '  -s 2 -p -B -C --largestOverlap '
+        '   --verbose -F GTF '
+        '   -a {input.annotation} -o {output.gene_counts} {input.bam_sorted} &>> {log} && '
+        'mv {output.gene_counts}.summary {output.gene_summary} '
+
+
+
+rule visualize_gene_counts:
+   input:
+       expand('results/{condition}_{sample}_gene_counts.tsv', condition=conditions, sample=samples)
+   output:
+       plot = 'top_genes.png'
+   localrule:
+        True
+   shell:
+       'Rscript scripts/visualize_counts.R --input {input} --output {output.plot}'
+
+
+
+
+
